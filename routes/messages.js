@@ -34,7 +34,11 @@ router.get('/:channelId', auth, [
         (SELECT JSON_ARRAYAGG(JSON_OBJECT('emoji', r.emoji, 'user_id', r.user_id))
          FROM reactions r WHERE r.message_id = m.id) as reactions,
         (SELECT JSON_ARRAYAGG(JSON_OBJECT('user_id', ms.user_id, 'delivered_at', ms.delivered_at, 'read_at', ms.read_at))
-         FROM message_status ms WHERE ms.message_id = m.id) as status
+         FROM message_status ms WHERE ms.message_id = m.id) as status,
+        (SELECT a.file_url  FROM attachments a WHERE a.message_id = m.id LIMIT 1) as file_url,
+        (SELECT a.file_name FROM attachments a WHERE a.message_id = m.id LIMIT 1) as file_name,
+        (SELECT a.file_type FROM attachments a WHERE a.message_id = m.id LIMIT 1) as file_type,
+        (SELECT a.duration  FROM attachments a WHERE a.message_id = m.id LIMIT 1) as duration
       FROM messages m
       JOIN users u ON m.sender_id = u.id
       WHERE m.channel_id = ? AND m.is_deleted = 0

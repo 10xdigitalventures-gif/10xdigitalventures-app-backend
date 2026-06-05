@@ -68,6 +68,39 @@ router.post('/upload/:channelId', auth, upload.single('file'), async (req, res) 
       [uuidv4(), msgId, req.file.originalname, req.file.mimetype, req.file.size, fileUrl, duration, width, height]
     );
 
+    const [senderInfo] = await db.query('SELECT name, avatar FROM users WHERE id = ?', [req.user.id]);
+    const msg = {
+      id: msgId,
+      channel_id: req.params.channelId,
+      content: req.file.originalname,
+      type: msgType,
+      reply_to: null,
+      sender_id: req.user.id,
+      sender_name: senderInfo[0] ? senderInfo[0].name : null,
+      sender_avatar: senderInfo[0] ? senderInfo[0].avatar : null,
+      file_url: fileUrl,
+      file_name: req.file.originalname,
+      file_type: req.file.mimetype,
+      file_size: req.file.size,
+      duration, width, height,
+      created_at: new Date(),
+      reactions: [],
+      status: []
+    };
+
+    try {
+      const [members] = await db.query(
+        'SELECT user_id FROM channel_members WHERE channel_id = ? AND user_id != ?',
+        [req.params.channelId, req.user.id]
+      );
+      for (const mem of members) {
+        await db.query('INSERT INTO message_status (message_id, user_id) VALUES (?, ?)', [msgId, mem.user_id]);
+      }
+    } catch (e) {}
+
+    const io = req.app.get('io');
+    if (io) io.to(req.params.channelId).emit('message:new', msg);
+
     res.json({
       data: {
         message_id: msgId,
