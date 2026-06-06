@@ -215,7 +215,134 @@ module.exports = (io) => {
     });
   });
 
-socket.on('disconnect', async () => {
+
+  // ============== GROUP CALL MESH SIGNALLING ==============
+  if (!io.__groupCalls) io.__groupCalls = new Map();
+  const gcRooms = io.__groupCalls;
+
+  socket.on('gcall:join', ({ channel_id, name, type }) => {
+    if (!channel_id) return;
+
+    let room = gcRooms.get(channel_id);
+    if (!room) {
+      room = new Map();
+      gcRooms.set(channel_id, room);
+    }
+
+    room.set(userId, {
+      name: name || 'User',
+      type: type || 'audio',
+    });
+
+    socket.join('gcall:' + channel_id);
+
+    const peers = [];
+    room.forEach((info, uid) => {
+      if (uid !== userId) {
+        peers.push({ user_id: uid, ...info });
+      }
+    });
+
+    socket.emit('gcall:peers', { channel_id, peers });
+
+    socket.to('gcall:' + channel_id).emit('gcall:joined', {
+      channel_id,
+      user_id: userId,
+      name: name || 'User',
+      type: type || 'audio',
+    });
+
+    db.query(
+      'SELECT user_id FROM channel_members WHERE channel_id = ? AND user_id != ?',
+      [channel_id, userId]
+    )
+      .then(([rows]) => {
+        rows.forEach((r) => {
+          io.to('user:' + r.user_id).emit('gcall:ring', {
+            channel_id,
+            from: userId,
+            fromName: name || 'User',
+            type: type || 'audio',
+          });
+        });
+      })
+      .catch(() => {});
+  });
+
+  socket.on('gcall:leave', ({ channel_id }) => {
+    if (!channel_id) return;
+
+    const room = gcRooms.get(channel_id);
+    if (room) {
+      room.delete(userId);
+      if (room.size === 0) {
+        gcRooms.delete(channel_id);
+      }
+    }
+
+    socket.leave('gcall:' + channel_id);
+
+    socket.to('gcall:' + channel_id).emit('gcall:left', {
+      channel_id,
+      user_id: userId,
+    });
+  });
+
+  socket.on('gcall:offer', ({ channel_id, to, sdp }) => {
+    io.to('user:' + to).emit('gcall:offer', {
+      channel_id,
+      from: userId,
+      sdp,
+    });
+  });
+
+  socket.on('gcall:answer', ({ channel_id, to, sdp }) => {
+    io.to('user:' + to).emit('gcall:answer', {
+      channel_id,
+      from: userId,
+      sdp,
+    });
+  });
+
+  socket.on('gcall:ice', ({ channel_id, to, candidate }) => {
+    io.to('user:' + to).emit('gcall:ice', {
+      channel_id,
+      from: userId,
+      candidate,
+    });
+  });
+
+  socket.on('gcall:state', ({ channel_id, muted, camOff }) => {
+    socket.to('gcall:' + channel_id).emit('gcall:state', {
+      channel_id,
+      user_id: userId,
+      muted: !!muted,
+      camOff: !!camOff,
+    });
+  });
+
+
+  socket.on('disconnect', async () => {
+      // Group call cleanup
+      try {
+        if (io.__groupCalls) {
+          io.__groupCalls.forEach((room, channel_id) => {
+            if (room.has(userId)) {
+              room.delete(userId);
+              io.to('gcall:' + channel_id).emit('gcall:left', {
+                channel_id,
+                user_id: userId,
+              });
+
+              if (room.size === 0) {
+                io.__groupCalls.delete(channel_id);
+              }
+            }
+          });
+        }
+      } catch (e) {}
+
+
       try {
         await db.query('UPDATE users SET is_online = 0, last_seen = NOW() WHERE id = ?', [userId]);
         io.emit('user:offline', { user_id: userId });

@@ -53,8 +53,6 @@ const io = new Server(server, {
 });
 
 app.set('io', io);
-app.set('io', io);
-app.set('io', io);
 require('./socket')(io);
 
 app.get('/', (req, res) => res.json({ status: 'ok', app: '10x Chat API' }));
