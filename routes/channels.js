@@ -162,4 +162,60 @@ router.post('/:id/join', auth, async (req, res) => {
   }
 });
 
+
+router.post('/group', auth, async (req, res) => {
+  const name = (req.body.name || '').trim();
+  const member_ids = Array.isArray(req.body.member_ids) ? req.body.member_ids : [];
+  const type = req.body.type === 'public' ? 'public' : 'private';
+
+  if (!name) {
+    return res.status(400).json({ message: 'Group name required' });
+  }
+
+  try {
+    const channelId = uuidv4();
+
+    await db.query(
+      'INSERT INTO channels (id, workspace_id, name, type, created_by) VALUES (?, ?, ?, ?, ?)',
+      [channelId, req.user.workspace_id, name, type, req.user.id]
+    );
+
+    await db.query(
+      'INSERT INTO channel_members (id, channel_id, user_id, role) VALUES (?, ?, ?, ?)',
+      [uuidv4(), channelId, req.user.id, 'admin']
+    );
+
+    const unique = [...new Set(member_ids.filter((id) => id && id !== req.user.id))];
+
+    for (const uid of unique) {
+      await db.query(
+        'INSERT INTO channel_members (id, channel_id, user_id, role) VALUES (?, ?, ?, ?)',
+        [uuidv4(), channelId, uid, 'member']
+      );
+    }
+
+    const channel = {
+      id: channelId,
+      name,
+      type,
+      created_by: req.user.id,
+      unread_count: 0,
+      last_message: null,
+    };
+
+    const io = req.app.get('io');
+    if (io) {
+      [req.user.id, ...unique].forEach((uid) => {
+        io.to('user:' + uid).emit('channel:new', channel);
+      });
+    }
+
+    res.json({ data: channel });
+  } catch (err) {
+    console.error('create group error:', err);
+    res.status(500).json({ message: 'Server error creating group' });
+  }
+});
+
 module.exports = router;
+

@@ -44,6 +44,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/channels', require('./routes/channels'));
 app.use('/api/messages', require('./routes/messages'));
 app.use('/api/files', require('./routes/files'));
+app.use('/api/calls', require('./routes/calls'));
 app.use('/api/users', require('./routes/users'));
 
 const io = new Server(server, {
@@ -51,6 +52,7 @@ const io = new Server(server, {
   transports: ['polling', 'websocket']
 });
 
+app.set('io', io);
 app.set('io', io);
 app.set('io', io);
 require('./socket')(io);
