@@ -168,13 +168,13 @@ module.exports = (io) => {
         );
         if (existing.length > 0) {
           await db.query('DELETE FROM reactions WHERE id = ?', [existing[0].id]);
-          io.to(channel_id).emit('reaction:updated', { message_id, user_id: userId, emoji, action: 'removed' });
+          io.to(channel_id).emit('reaction:updated', { message_id, channel_id, user_id: userId, emoji, action: 'removed' });
         } else {
           await db.query(
             'INSERT INTO reactions (id, message_id, user_id, emoji) VALUES (?, ?, ?, ?)',
             [uuidv4(), message_id, userId, emoji]
           );
-          io.to(channel_id).emit('reaction:updated', { message_id, user_id: userId, emoji, action: 'added' });
+          io.to(channel_id).emit('reaction:updated', { message_id, channel_id, user_id: userId, emoji, action: 'added' });
         }
       } catch (err) {}
     });
