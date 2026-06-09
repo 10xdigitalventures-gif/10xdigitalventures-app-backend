@@ -6,6 +6,18 @@ const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 
+// ===== Global error handlers (must be first, before anything else) =====
+// Without these, ANY unhandled error / promise rejection kills the Node
+// process and Wasmer / PM2 / Vercel sees ExitCode 27 and restarts in a
+// loop. Catching them here means the API stays up.
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', (err && err.stack) || err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', (reason && reason.stack) || reason);
+});
+process.on('SIGTERM', () => { console.log('[signal] SIGTERM received (graceful shutdown ignored)'); });
+
 const app = express();
 const server = http.createServer(app);
 
@@ -55,6 +67,12 @@ const io = new Server(server, {
 app.set('io', io);
 require('./socket')(io);
 
+app.get('/health', (req, res) => res.json({
+  status: 'ok',
+  uptime: Math.round(process.uptime()),
+  ts: new Date().toISOString(),
+  node: process.version,
+}));
 app.get('/', (req, res) => res.json({ status: 'ok', app: '10x Chat API' }));
 
 const PORT = process.env.PORT || 5000;
